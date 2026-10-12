@@ -1,6 +1,7 @@
 package com.rizal.catatemas
 
 import android.app.Application
+import com.rizal.catatemas.backup.BackupManager
 import com.rizal.catatemas.data.ItemRepository
 import com.rizal.catatemas.data.ItemStore
 import com.rizal.catatemas.data.JsonStore
@@ -24,6 +25,7 @@ class AppContainer(application: Application) {
     val photoStore = PhotoStore(application)
     val securityManager = SecurityManager(application)
     val updater = Updater(application)
+    val backupManager = BackupManager(application, itemRepository, photoStore)
 }
 
 class CatatEmasApp : Application() {

@@ -6,6 +6,7 @@ import androidx.lifecycle.viewModelScope
 import androidx.lifecycle.viewmodel.initializer
 import androidx.lifecycle.viewmodel.viewModelFactory
 import com.rizal.catatemas.AppContainer
+import com.rizal.catatemas.backup.BackupManager
 import com.rizal.catatemas.data.GoldItem
 import com.rizal.catatemas.data.ItemRepository
 import com.rizal.catatemas.data.PhotoStore
@@ -99,6 +100,7 @@ class GoldViewModel(
     private val photos: PhotoStore,
     private val security: SecurityManager,
     private val updater: Updater,
+    private val backupManager: BackupManager,
 ) : ViewModel() {
 
     /** dipakai layar edit untuk estimasi harga live */
@@ -166,6 +168,51 @@ class GoldViewModel(
 
     fun clearUpdateMessage() {
         _updateMessage.value = null
+    }
+
+    // ------------------------------------------------------------- backup (export/import terenkripsi)
+
+    private val _backupStatus = MutableStateFlow(BackupStatus())
+    val backupStatus: StateFlow<BackupStatus> = _backupStatus
+
+    fun exportBackup(uri: Uri, passphrase: String) {
+        viewModelScope.launch {
+            _backupStatus.value = BackupStatus(working = true)
+            backupManager.export(uri, passphrase)
+                .onSuccess { count ->
+                    _backupStatus.value = BackupStatus(message = "Backup $count catatan tersimpan.")
+                }
+                .onFailure { error ->
+                    _backupStatus.value = BackupStatus(
+                        message = error.message ?: "Export gagal",
+                        isError = true,
+                    )
+                }
+        }
+    }
+
+    fun importBackup(uri: Uri, passphrase: String) {
+        viewModelScope.launch {
+            _backupStatus.value = BackupStatus(working = true)
+            backupManager.import(uri, passphrase)
+                .onSuccess { count ->
+                    _backupStatus.value = BackupStatus(message = "$count catatan dipulihkan.")
+                    prices.ensure(
+                        PriceRepository.sourcesFor(items.items.value),
+                        maxAgeMs = PriceRepository.FRESH_MS,
+                    )
+                }
+                .onFailure { error ->
+                    _backupStatus.value = BackupStatus(
+                        message = error.message ?: "Restore gagal",
+                        isError = true,
+                    )
+                }
+        }
+    }
+
+    fun clearBackupStatus() {
+        _backupStatus.value = BackupStatus()
     }
 
     // keamanan
@@ -342,11 +389,18 @@ class GoldViewModel(
                     photos = container.photoStore,
                     security = container.securityManager,
                     updater = container.updater,
+                    backupManager = container.backupManager,
                 )
             }
         }
     }
 }
+
+data class BackupStatus(
+    val working: Boolean = false,
+    val message: String? = null,
+    val isError: Boolean = false,
+)
 
 /** state kecil untuk layar edit */
 data class FormPricePreview(

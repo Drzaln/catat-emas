@@ -14,6 +14,9 @@ class PhotoStore(private val context: Context) {
 
     private val dir: File get() = File(context.filesDir, "photos").apply { mkdirs() }
 
+    /** dipakai BackupManager untuk menaruh foto hasil restore */
+    val directory: File get() = dir
+
     fun saveFromUri(uri: Uri): String? {
         val bitmap = decodeUri(context, uri, 1200) ?: return null
         val file = File(dir, "gold_${System.currentTimeMillis()}_${(0..999).random()}.jpg")

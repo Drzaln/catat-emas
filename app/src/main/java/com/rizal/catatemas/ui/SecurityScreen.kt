@@ -3,6 +3,8 @@
 package com.rizal.catatemas.ui
 
 import androidx.activity.compose.BackHandler
+import androidx.activity.compose.rememberLauncherForActivityResult
+import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
@@ -11,6 +13,7 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
@@ -19,6 +22,7 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.CardDefaults
+import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.ElevatedCard
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.FilledTonalButton
@@ -26,6 +30,7 @@ import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Switch
 import androidx.compose.material3.Text
@@ -43,11 +48,16 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
+import com.rizal.catatemas.backup.BackupManager
 import com.rizal.catatemas.security.SecurityManager
 import com.rizal.catatemas.security.SecurityState
 import com.rizal.catatemas.ui.components.PinDots
 import com.rizal.catatemas.ui.components.PinKeypad
 import kotlinx.coroutines.delay
+import java.time.LocalDate
+
+private const val MIN_PASSPHRASE = 8
+private const val BACKUP_MIME = "application/octet-stream"
 
 private enum class PinDialogMode { ENABLE, CHANGE, DISABLE }
 
@@ -57,6 +67,8 @@ private enum class PinStep { VERIFY, ENTER, CONFIRM }
 fun SecurityScreen(
     state: SecurityState,
     pinLength: Int,
+    itemCount: Int,
+    backupStatus: BackupStatus,
     onClose: () -> Unit,
     onVerifyPin: (String) -> Boolean,
     onSetPin: (String) -> Unit,
@@ -64,10 +76,36 @@ fun SecurityScreen(
     onToggleBiometric: (Boolean) -> Unit,
     onToggleSecureScreen: (Boolean) -> Unit,
     onLockNow: () -> Unit,
+    onExportBackup: (android.net.Uri, String) -> Unit,
+    onImportBackup: (android.net.Uri, String) -> Unit,
+    onClearBackupStatus: () -> Unit,
 ) {
     BackHandler { onClose() }
 
     var dialogMode by remember { mutableStateOf<PinDialogMode?>(null) }
+
+    // backup terenkripsi
+    var showExportDialog by remember { mutableStateOf(false) }
+    var showImportDialog by remember { mutableStateOf(false) }
+    var pendingImportUri by remember { mutableStateOf<android.net.Uri?>(null) }
+    var exportPassphrase by remember { mutableStateOf<String?>(null) }
+
+    val exportLauncher = rememberLauncherForActivityResult(
+        ActivityResultContracts.CreateDocument(BACKUP_MIME),
+    ) { uri ->
+        val passphrase = exportPassphrase
+        exportPassphrase = null
+        if (uri != null && passphrase != null) onExportBackup(uri, passphrase)
+    }
+
+    val importLauncher = rememberLauncherForActivityResult(
+        ActivityResultContracts.OpenDocument(),
+    ) { uri ->
+        if (uri != null) {
+            pendingImportUri = uri
+            showImportDialog = true
+        }
+    }
 
     Scaffold(
         containerColor = MaterialTheme.colorScheme.background,
@@ -172,6 +210,86 @@ fun SecurityScreen(
             ElevatedCard(
                 modifier = Modifier.fillMaxWidth(),
                 shape = RoundedCornerShape(20.dp),
+                colors = CardDefaults.elevatedCardColors(containerColor = MaterialTheme.colorScheme.surface),
+                elevation = CardDefaults.elevatedCardElevation(defaultElevation = 1.dp),
+            ) {
+                Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
+                    Text(
+                        text = "Backup & pulihkan data",
+                        style = MaterialTheme.typography.titleSmall,
+                        fontWeight = FontWeight.SemiBold,
+                    )
+                    Text(
+                        text = "Export berisi semua catatan emas + foto, dikunci dengan passphrase kamu " +
+                            "(AES-256-GCM + PBKDF2). Tanpa passphrase, file backup tidak bisa dibuka. " +
+                            "Simpan file .${BackupManager.EXTENSION} di tempat aman — file ini tetap ada walau " +
+                            "aplikasi di-uninstall, jadi bisa dipakai pindah HP atau ganti kunci penandatangan.",
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    )
+
+                    Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                        FilledTonalButton(
+                            onClick = { showExportDialog = true },
+                            enabled = itemCount > 0 && !backupStatus.working,
+                            shape = RoundedCornerShape(14.dp),
+                            modifier = Modifier.weight(1f),
+                        ) {
+                            Text("Export", maxLines = 1)
+                        }
+                        FilledTonalButton(
+                            onClick = { importLauncher.launch(arrayOf("*/*")) },
+                            enabled = !backupStatus.working,
+                            shape = RoundedCornerShape(14.dp),
+                            modifier = Modifier.weight(1f),
+                        ) {
+                            Text("Import", maxLines = 1)
+                        }
+                    }
+
+                    if (backupStatus.working) {
+                        Row(verticalAlignment = Alignment.CenterVertically) {
+                            CircularProgressIndicator(modifier = Modifier.size(16.dp), strokeWidth = 2.dp)
+                            Spacer(Modifier.width(10.dp))
+                            Text(
+                                text = "Memproses…",
+                                style = MaterialTheme.typography.bodySmall,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                            )
+                        }
+                    }
+
+                    backupStatus.message?.let { message ->
+                        Row(verticalAlignment = Alignment.CenterVertically) {
+                            Text(
+                                text = message,
+                                style = MaterialTheme.typography.bodySmall,
+                                color = if (backupStatus.isError) {
+                                    MaterialTheme.colorScheme.error
+                                } else {
+                                    MaterialTheme.colorScheme.tertiary
+                                },
+                                modifier = Modifier.weight(1f),
+                            )
+                            TextButton(onClick = onClearBackupStatus) {
+                                Text("Tutup", maxLines = 1)
+                            }
+                        }
+                    }
+
+                    if (itemCount == 0) {
+                        Text(
+                            text = "Belum ada catatan untuk di-export.",
+                            style = MaterialTheme.typography.labelSmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        )
+                    }
+                }
+            }
+
+            ElevatedCard(
+                modifier = Modifier.fillMaxWidth(),
+                shape = RoundedCornerShape(20.dp),
                 colors = CardDefaults.elevatedCardColors(
                     containerColor = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.45f),
                 ),
@@ -204,6 +322,111 @@ fun SecurityScreen(
             onDismiss = { dialogMode = null },
         )
     }
+
+    if (showExportDialog) {
+        PassphraseDialog(
+            title = "Export backup",
+            description = "Buat passphrase untuk mengunci file backup (minimal $MIN_PASSPHRASE karakter). " +
+                "Catat passphrase-nya — tanpa itu file backup tidak bisa dibuka lagi.",
+            requireConfirm = true,
+            confirmLabel = "Lanjut",
+            onConfirm = { passphrase ->
+                exportPassphrase = passphrase
+                showExportDialog = false
+                exportLauncher.launch("catat-emas-backup-${LocalDate.now()}.${BackupManager.EXTENSION}")
+            },
+            onDismiss = { showExportDialog = false },
+        )
+    }
+
+    if (showImportDialog) {
+        val uri = pendingImportUri
+        PassphraseDialog(
+            title = "Pulihkan dari backup",
+            description = "Masukkan passphrase file backup. Semua catatan emas yang ada sekarang akan diganti " +
+                "dengan isi backup.",
+            requireConfirm = false,
+            confirmLabel = "Pulihkan",
+            onConfirm = { passphrase ->
+                showImportDialog = false
+                pendingImportUri = null
+                if (uri != null) onImportBackup(uri, passphrase)
+            },
+            onDismiss = {
+                showImportDialog = false
+                pendingImportUri = null
+            },
+        )
+    }
+}
+
+@Composable
+private fun PassphraseDialog(
+    title: String,
+    description: String,
+    requireConfirm: Boolean,
+    confirmLabel: String,
+    onConfirm: (String) -> Unit,
+    onDismiss: () -> Unit,
+) {
+    var passphrase by remember { mutableStateOf("") }
+    var confirmation by remember { mutableStateOf("") }
+
+    val valid = if (requireConfirm) {
+        passphrase.length >= MIN_PASSPHRASE && confirmation == passphrase
+    } else {
+        passphrase.isNotEmpty()
+    }
+
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        title = { Text(title) },
+        text = {
+            Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
+                Text(
+                    text = description,
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
+
+                OutlinedTextField(
+                    value = passphrase,
+                    onValueChange = { passphrase = it },
+                    label = { Text("Passphrase") },
+                    singleLine = true,
+                    isError = requireConfirm && passphrase.isNotEmpty() && passphrase.length < MIN_PASSPHRASE,
+                    supportingText = if (requireConfirm) {
+                        { Text("Minimal $MIN_PASSPHRASE karakter") }
+                    } else {
+                        null
+                    },
+                    modifier = Modifier.fillMaxWidth(),
+                    shape = RoundedCornerShape(14.dp),
+                )
+
+                if (requireConfirm) {
+                    OutlinedTextField(
+                        value = confirmation,
+                        onValueChange = { confirmation = it },
+                        label = { Text("Ulangi passphrase") },
+                        singleLine = true,
+                        isError = confirmation.isNotEmpty() && confirmation != passphrase,
+                        supportingText = {
+                            if (confirmation.isNotEmpty() && confirmation != passphrase) Text("Belum sama")
+                        },
+                        modifier = Modifier.fillMaxWidth(),
+                        shape = RoundedCornerShape(14.dp),
+                    )
+                }
+            }
+        },
+        confirmButton = {
+            TextButton(onClick = { onConfirm(passphrase) }, enabled = valid) { Text(confirmLabel) }
+        },
+        dismissButton = {
+            TextButton(onClick = onDismiss) { Text("Batal") }
+        },
+    )
 }
 
 @Composable

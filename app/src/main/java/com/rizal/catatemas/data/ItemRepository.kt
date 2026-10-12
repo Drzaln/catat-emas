@@ -27,6 +27,11 @@ class ItemRepository(private val store: JsonStore<ItemStore>) {
         persist(_items.value.filterNot { it.id == id })
     }
 
+    /** ganti seluruh data (dipakai saat restore backup) */
+    fun replaceAll(list: List<GoldItem>) {
+        persist(list.sortedWith(compareByDescending<GoldItem> { it.purchaseDate }.thenByDescending { it.createdAt }))
+    }
+
     private fun persist(list: List<GoldItem>) {
         _items.value = list
         store.write(ItemStore(list))

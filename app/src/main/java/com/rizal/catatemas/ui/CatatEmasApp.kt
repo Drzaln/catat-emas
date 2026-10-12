@@ -37,6 +37,7 @@ fun CatatEmasRoot(container: AppContainer) {
     val locked by viewModel.locked.collectAsStateWithLifecycle()
     val update by viewModel.update.collectAsStateWithLifecycle()
     val updateMessage by viewModel.updateMessage.collectAsStateWithLifecycle()
+    val backupStatus by viewModel.backupStatus.collectAsStateWithLifecycle()
 
     var route by rememberSaveable { mutableStateOf(ROUTE_HOME) }
     var showInfo by rememberSaveable { mutableStateOf(false) }
@@ -82,6 +83,8 @@ fun CatatEmasRoot(container: AppContainer) {
                     target == ROUTE_SECURITY -> SecurityScreen(
                         state = security,
                         pinLength = viewModel.pinLength,
+                        itemCount = state.rows.size + state.soldRows.size,
+                        backupStatus = backupStatus,
                         onClose = { route = ROUTE_HOME },
                         onVerifyPin = viewModel::verifyPin,
                         onSetPin = viewModel::setPin,
@@ -92,6 +95,9 @@ fun CatatEmasRoot(container: AppContainer) {
                             route = ROUTE_HOME
                             viewModel.lockNow()
                         },
+                        onExportBackup = viewModel::exportBackup,
+                        onImportBackup = viewModel::importBackup,
+                        onClearBackupStatus = viewModel::clearBackupStatus,
                     )
 
                     target == ROUTE_NEW -> EditItemScreen(

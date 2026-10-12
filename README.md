@@ -21,6 +21,7 @@ Aplikasi Android (Jetpack Compose) untuk mencatat kepemilikan **logam mulia & pe
 | Cari, filter, urutkan | Cari merk/karat/catatan, filter jenis, urutkan (terbaru, berat, untung, modal) |
 | **Keamanan** | Kunci aplikasi pakai **PIN 4-6 angka** dan/atau **biometrik** (sidik jari/wajah), plus **cegah screenshot & rekam layar** (FLAG_SECURE). Auto-lock setelah 30 detik di background, tombol "Kunci sekarang", bisa ubah PIN |
 | **Pembaruan otomatis** | Cek versi baru dari **GitHub Releases** (tanpa REST API, jadi bebas rate limit), unduh progress, lalu pasang lewat FileProvider. Ada tombol "Cek pembaruan" + "Nanti" (skip versi) |
+| **Backup terenkripsi** | Export semua catatan + foto ke satu file `.ceb` yang dikunci passphrase (AES-256-GCM + PBKDF2 150k iterasi). Import untuk memulihkan. Dipakai untuk pindah HP / ganti kunci penandatangan |
 | Offline-first | Semua data di perangkat (`filesDir/items.json`), harga disimpan cache → tetap kebaca tanpa internet |
 
 ## Keamanan
@@ -32,6 +33,36 @@ Buka ikon 🔒 di beranda → layar **Keamanan**.
 - **Cegah screenshot & rekam layar** — `FLAG_SECURE` di window: screenshot/rekaman jadi hitam dan aplikasi tidak muncul di pratinjau "aplikasi terbaru". Default **aktif**.
 - **Auto-lock** — setelah 30 detik di background (jendela 30 detik ini supaya pemilih foto tidak memicu kunci). Layar kunci dibuat sebagai *overlay*, jadi isian form yang sedang dibuka tidak hilang.
 - **PIN lupa** → satu-satunya jalan adalah hapus data aplikasi dari pengaturan Android (catatan emas ikut hilang).
+- **Backup terenkripsi** → lihat bagian di bawah.
+
+## Backup terenkripsi & pindah kunci penandatangan
+
+Ikon 🔒 di beranda → **Backup & pulihkan data**.
+
+**Format file `.ceb`**
+
+```
+"CEB1" | versi(1B) | panjang salt(1B) | salt(16B) | iterasi(4B) | panjang iv(1B) | iv(12B) | AES-256-GCM(zip)
+zip: backup.json (semua catatan) + photos/<nama file>
+```
+
+- Kunci diturunkan dari passphrase kamu: `PBKDF2-HMAC-SHA256`, 150.000 iterasi, salt acak 16 byte.
+- GCM memberi autentikasi: passphrase salah atau file diubah sedikit saja → gagal dibuka
+  (pesan "Passphrase salah atau file backup rusak / diubah"), dan **data lama tidak tersentuh**.
+- Foto ikut masuk; saat import, foto ditulis ulang dengan nama baru (`restore_*`) supaya tidak bertabrakan.
+- **Import bersifat mengganti**: seluruh catatan yang ada sekarang diganti isi backup (foto lama ikut dibersihkan).
+
+**Alur pindah HP / ganti kunci penandatangan**
+
+1. Di app lama: 🔒 → **Export** → isi passphrase (min. 8 karakter, dicatat!) → simpan file `.ceb`
+   (mis. ke Download/Drive). File ini tetap ada walau app di-uninstall.
+2. Uninstall app lama → install APK baru (kunci penandatangan berbeda = wajib uninstall).
+3. Buka app baru: 🔒 → **Import** → pilih file `.ceb` → masukkan passphrase → selesai
+   (catatan + foto kembali semua).
+
+File backup disimpan ke lokasi yang kamu pilih lewat file picker (Storage Access Framework),
+jadi tidak butuh izin penyimpanan tambahan.
+
 
 
 ## Sumber harga
@@ -66,6 +97,8 @@ Fitur ini alat bantu hitung, bukan fatwa.
 app/src/main/java/com/rizal/catatemas/
 ├── CatatEmasApp.kt            # Application + AppContainer (manual DI, tanpa Hilt)
 ├── MainActivity.kt
+├── backup/
+│   └── BackupManager.kt       # export/import .ceb (AES-256-GCM + PBKDF2, isi: JSON + foto)
 ├── data/
 │   ├── GoldItem.kt            # model + field penjualan (saleDate/salePrice/salePlace)
 │   ├── ItemRepository.kt      # StateFlow daftar item

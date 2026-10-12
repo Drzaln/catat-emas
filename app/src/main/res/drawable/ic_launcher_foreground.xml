@@ -1,0 +1,39 @@
+<?xml version="1.0" encoding="utf-8"?>
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:aapt="http://schemas.android.com/aapt"
+    android:width="108dp"
+    android:height="108dp"
+    android:viewportWidth="108"
+    android:viewportHeight="108">
+
+    <!-- bayangan -->
+    <path
+        android:pathData="M34,72 L74,72 L82,76 L26,76 Z"
+        android:fillColor="#33000000" />
+
+    <!-- batang emas -->
+    <path android:pathData="M37,40 L71,40 L82,68 L26,68 Z">
+        <aapt:attr name="android:fillColor">
+            <gradient
+                android:type="linear"
+                android:startX="26"
+                android:startY="40"
+                android:endX="82"
+                android:endY="68">
+                <item android:offset="0" android:color="#FFF7E08A" />
+                <item android:offset="0.45" android:color="#FFE0B24A" />
+                <item android:offset="1" android:color="#FFA9741A" />
+            </gradient>
+        </aapt:attr>
+    </path>
+
+    <!-- highlight atas -->
+    <path
+        android:pathData="M39,43 L69,43 L72,49 L36,49 Z"
+        android:fillColor="#66FFFFFF" />
+
+    <!-- kilau -->
+    <path
+        android:pathData="M79,26 l1.9,4.9 l4.9,1.9 l-4.9,1.9 l-1.9,4.9 l-1.9,-4.9 l-4.9,-1.9 l4.9,-1.9 z"
+        android:fillColor="#FFFFF3CC" />
+</vector>
